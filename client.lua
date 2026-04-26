@@ -172,6 +172,47 @@ RegisterCommand('endfighttest', function()
     notify('info', 'Debug Fight', 'Debug fight ended.', 2500)
 end, false)
 
+local lastHudPayload = nil
+
+local function updateFightHud(payload)
+    if not payload or type(payload) ~= 'table' then
+        return
+    end
+    if payload.action == 'updateFightHud' and payload.visible == false then
+        lastHudPayload = nil
+    else
+        lastHudPayload = payload
+    end
+    SendNUIMessage(payload)
+end
+
+local isQueued = false
+
+RegisterNetEvent('fightclub:setQueued', function(state)
+    isQueued = state
+end)
+
+RegisterCommand('fightclub_leavequeue', function()
+    if isQueued and not inFight then
+        TriggerServerEvent('fightclub:leaveQueue')
+        notify('warning', 'Fight Club', 'You left the queue.', 2500)
+        isQueued = false
+        inQueue = false
+        return
+    end
+
+    if debugFight then
+        inFight = false
+        debugFight = false
+        opponentServerId = nil
+        lastHudPayload = nil
+        updateFightHud({ action = 'updateFightHud', visible = false })
+        notify('info', 'Debug Fight', 'Debug fight ended.', 2500)
+    end
+end, false)
+
+RegisterKeyMapping('fightclub_leavequeue', 'Fight Club: Leave queue / end debug fight', 'keyboard', 'BACK')
+
 RegisterNUICallback('close', function(_, cb)
     SetNuiFocus(false, false)
     cb('ok')

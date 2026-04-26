@@ -60,6 +60,9 @@ local function tryStartMatch()
     local player1 = table.remove(queue, 1)
     local player2 = table.remove(queue, 1)
 
+    TriggerClientEvent('fightclub:setQueued', player1, false)
+    TriggerClientEvent('fightclub:setQueued', player2, false)
+
     activeMatch = {
         player1 = player1,
         player2 = player2,
@@ -112,6 +115,8 @@ RegisterNetEvent('fightclub:joinQueue', function()
 
     table.insert(queue, src)
 
+    TriggerClientEvent('fightclub:setQueued', src, true)
+
     notifyPlayer(
         src,
         'success',
@@ -132,6 +137,8 @@ end)
 RegisterNetEvent('fightclub:leaveQueue', function()
     local src = source
     removeFromQueue(src)
+
+    TriggerClientEvent('fightclub:setQueued', src, false)
 
     notifyPlayer(src, 'warning', 'Fight Club', 'You left the fight queue. Entry fee is not refunded.', 5000)
 end)
