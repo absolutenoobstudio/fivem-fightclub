@@ -1,7 +1,27 @@
 local insideArena = false
 local inQueue = false
-local inMatch = false
-local debugSoloMode = false
+local inFight = false
+local debugFight = false
+local opponentServerId = nil
+
+local function notify(nType, title, message, duration)
+    SendNUIMessage({
+        action = 'notify',
+        type = nType or 'info',
+        title = title or 'Fight Club',
+        message = message or '',
+        duration = duration or 3000
+    })
+end
+
+RegisterNetEvent('fightclub:notify', function(data)
+    notify(data.type, data.title, data.message, data.duration)
+end)
+
+local function forceUnarmed()
+    local ped = PlayerPedId()
+    SetCurrentPedWeapon(ped, `WEAPON_UNARMED`, true)
+end
 
 CreateThread(function()
     while true do
@@ -10,7 +30,7 @@ CreateThread(function()
         local playerCoords = GetEntityCoords(ped)
         local dist = #(playerCoords - Config.Arena.coords)
 
-insideArena = dist < Config.Arena.radius
+        insideArena = dist < Config.Arena.radius
 
         if dist < 25.0 then
             sleep = 0
@@ -39,43 +59,37 @@ insideArena = dist < Config.Arena.radius
                         inQueue = true
                         TriggerServerEvent('fightclub:joinQueue')
 
-                        TriggerEvent('chat:addMessage', {
-                            color = {0, 255, 0},
-                            args = {'FightClub', 'You joined the queue. Waiting for another fighter...'}
-                        })
+                        notify('success', 'Fight Club', 'You joined the queue. Waiting for another fighter.', 4000)
                     else
                         inQueue = false
                         TriggerServerEvent('fightclub:leaveQueue')
 
-                        TriggerEvent('chat:addMessage', {
-                            color = {255, 100, 100},
-                            args = {'FightClub', 'You left the queue.'}
-                        })
+                        notify('warning', 'Fight Club', 'You left the queue.', 3000)
                     end
                 end
+            end
 
-        if insideArena or inMatch then
-            SetCurrentPedWeapon(ped, `WEAPON_UNARMED`, true)
-        end
+            if insideArena or inFight then
+                forceUnarmed()
+            end
 
-        if inMatch and IsEntityDead(ped) then
-            if debugSoloMode then
-                TriggerEvent('chat:addMessage', {
-                    color = {255, 0, 0},
-                    args = {'FightClub', 'Solo debug match ended. You died.'}
-                })
+            if inFight and IsEntityDead(ped) then
+                if debugFight then
+                    notify('error', 'Fight Club', 'Solo debug match ended. You died.', 4000)
 
-                inMatch = false
-                inQueue = false
-                insideArena = false
-                debugSoloMode = false
-                Wait(3000)
-            else
-                TriggerServerEvent('fightclub:playerDied')
-                inMatch = false
-                inQueue = false
-                insideArena = false
-                Wait(3000)
+                    inFight = false
+                    inQueue = false
+                    insideArena = false
+                    debugFight = false
+                    opponentServerId = nil
+                    Wait(3000)
+                else
+                    TriggerServerEvent('fightclub:playerDied')
+                    inFight = false
+                    inQueue = false
+                    insideArena = false
+                    Wait(3000)
+                end
             end
         end
 
@@ -86,49 +100,44 @@ end)
 RegisterNetEvent('fightclub:startCountdown', function(seconds, enemyServerId)
     CreateThread(function()
         for i = seconds, 1, -1 do
-            BeginTextCommandPrint('STRING')
-            AddTextComponentSubstringPlayerName(('Fight starts in %d...'):format(i))
-            EndTextCommandPrint(1000, true)
+            notify('info', 'Fight Club', ('Fight starts in %d...'):format(i), 1000)
             Wait(1000)
         end
     end)
 end)
 
-RegisterNetEvent('fightclub:matchStarted', function(enemyServerId)
-    inMatch = true
+RegisterNetEvent('fightclub:matchStarted', function(opponentId)
+    inFight = true
     inQueue = false
-    insideArena = true
+    debugFight = false
+    opponentServerId = opponentId
 
-    TriggerEvent('chat:addMessage', {
-        color = {255, 80, 80},
-        args = {'FightClub', 'Your fight has started. Melee only.'}
-    })
+    local ped = PlayerPedId()
+    SetEntityHealth(ped, GetEntityMaxHealth(ped))
+    ClearPedBloodDamage(ped)
+    forceUnarmed()
+
+    notify('warning', 'Fight Started', 'Melee only. Weapons are disabled.', 3500)
 end)
 
 RegisterNetEvent('fightclub:matchEnded', function(data)
     local myServerId = GetPlayerServerId(PlayerId())
 
     if data.winner == myServerId then
-        TriggerEvent('chat:addMessage', {
-            color = {0, 255, 0},
-            args = {'FightClub', 'You won the fight!'}
-        })
+        notify('success', 'Victory', 'You won the fight!', 4000)
     elseif data.loser == myServerId then
-        TriggerEvent('chat:addMessage', {
-            color = {255, 0, 0},
-            args = {'FightClub', 'You lost the fight.'}
-        })
+        notify('error', 'Defeat', 'You lost the fight!', 4000)
     end
 
-    inMatch = false
-    inQueue = false
-    insideArena = false
-    debugSoloMode = false
+    inFight = false
+    debugFight = false
+    opponentServerId = nil
 end)
 
 RegisterCommand('testgun', function()
-    GiveWeaponToPed(PlayerPedId(), `WEAPON_PISTOL`, 250, false, true)
-    print('[FightClub] Test pistol given')
+    local ped = PlayerPedId()
+    GiveWeaponToPed(ped, `WEAPON_PISTOL`, 20, false, true)
+    notify('info', 'Weapon Test', 'Pistol given. Start a fight to confirm removal.', 3500)
 end, false)
 
 RegisterCommand('mycoords', function()
@@ -137,49 +146,33 @@ RegisterCommand('mycoords', function()
 end, false)
 
 RegisterCommand('fighttest', function()
-    if inMatch then
-        TriggerEvent('chat:addMessage', {
-            color = {255, 200, 0},
-            args = {'FightClub', 'You are already in a match.'}
-        })
+    if inFight then
+        notify('error', 'Fight Club', 'You are already in a fight.', 3000)
         return
     end
 
-    debugSoloMode = true
-    insideArena = true
-    inQueue = false
-
-    TriggerEvent('chat:addMessage', {
-        color = {0, 200, 255},
-        args = {'FightClub', 'Solo debug match starting...'}
-    })
+    debugFight = true
 
     CreateThread(function()
         for i = Config.Match.countdown, 1, -1 do
-            BeginTextCommandPrint('STRING')
-            AddTextComponentSubstringPlayerName(('Solo debug fight starts in %d...'):format(i))
-            EndTextCommandPrint(1000, true)
+            notify('info', 'Debug Match', ('Starting in %d...'):format(i), 900)
             Wait(1000)
         end
 
-        inMatch = true
-
-        BeginTextCommandPrint('STRING')
-        AddTextComponentSubstringPlayerName('SOLO DEBUG FIGHT STARTED')
-        EndTextCommandPrint(3000, true)
-
-        print('[FightClub] Solo debug fight started')
+        inFight = true
+        forceUnarmed()
+        notify('warning', 'Debug Fight', 'Debug fight started. Melee only.', 3000)
     end)
 end, false)
 
 RegisterCommand('endfighttest', function()
-    inMatch = false
-    inQueue = false
-    insideArena = false
-    debugSoloMode = false
-
-    TriggerEvent('chat:addMessage', {
-        color = {255, 100, 100},
-        args = {'FightClub', 'Solo debug fight ended.'}
-    })
+    inFight = false
+    debugFight = false
+    opponentServerId = nil
+    notify('info', 'Debug Fight', 'Debug fight ended.', 2500)
 end, false)
+
+RegisterNUICallback('close', function(_, cb)
+    SetNuiFocus(false, false)
+    cb('ok')
+end)
