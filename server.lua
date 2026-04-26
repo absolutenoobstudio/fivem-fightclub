@@ -22,6 +22,15 @@ local function clearMatchForPlayer(source)
     if activeMatch and (activeMatch.player1 == source or activeMatch.player2 == source) then
         local otherPlayer = activeMatch.player1 == source and activeMatch.player2 or activeMatch.player1
 
+        if otherPlayer then
+            FrameworkBridge.AddMoney(otherPlayer, Config.Economy.winnerPayout)
+
+            TriggerClientEvent('chat:addMessage', otherPlayer, {
+                color = {0, 255, 0},
+                args = {'FightClub', ('Opponent disconnected. You received $%d'):format(Config.Economy.winnerPayout)}
+            })
+        end
+
         TriggerClientEvent('fightclub:matchEnded', -1, {
             winner = otherPlayer,
             loser = source,
@@ -65,6 +74,7 @@ end
 
 RegisterNetEvent('fightclub:joinQueue', function()
     local src = source
+    local entryFee = Config.Economy.entryFee
 
     if activeMatch and (activeMatch.player1 == src or activeMatch.player2 == src) then
         TriggerClientEvent('chat:addMessage', src, {
@@ -82,11 +92,29 @@ RegisterNetEvent('fightclub:joinQueue', function()
         return
     end
 
+    local balance = FrameworkBridge.GetPlayerMoney(src)
+    if balance < entryFee then
+        TriggerClientEvent('chat:addMessage', src, {
+            color = {255, 0, 0},
+            args = {'FightClub', ('Not enough money. You need $%d'):format(entryFee)}
+        })
+        return
+    end
+
+    local paid = FrameworkBridge.RemoveMoney(src, entryFee)
+    if not paid then
+        TriggerClientEvent('chat:addMessage', src, {
+            color = {255, 0, 0},
+            args = {'FightClub', 'Payment failed.'}
+        })
+        return
+    end
+
     table.insert(queue, src)
 
     TriggerClientEvent('chat:addMessage', src, {
         color = {0, 255, 0},
-        args = {'FightClub', 'You joined the fight queue.'}
+        args = {'FightClub', ('You paid $%d and joined the fight queue.'):format(entryFee)}
     })
 
     TriggerClientEvent('chat:addMessage', -1, {
@@ -103,7 +131,7 @@ RegisterNetEvent('fightclub:leaveQueue', function()
 
     TriggerClientEvent('chat:addMessage', src, {
         color = {255, 120, 120},
-        args = {'FightClub', 'You left the fight queue.'}
+        args = {'FightClub', 'You left the fight queue. Entry fee is not refunded.'}
     })
 end)
 
@@ -116,6 +144,8 @@ RegisterNetEvent('fightclub:playerDied', function()
     local winner = (src == activeMatch.player1) and activeMatch.player2 or activeMatch.player1
     local loser = src
 
+    FrameworkBridge.AddMoney(winner, Config.Economy.winnerPayout)
+
     TriggerClientEvent('fightclub:matchEnded', -1, {
         winner = winner,
         loser = loser,
@@ -124,7 +154,11 @@ RegisterNetEvent('fightclub:playerDied', function()
 
     TriggerClientEvent('chat:addMessage', -1, {
         color = {0, 255, 0},
-        args = {'FightClub', ('%s won the fight against %s'):format(GetPlayerName(winner), GetPlayerName(loser))}
+        args = {'FightClub', ('%s won the fight against %s and received $%d'):format(
+            GetPlayerName(winner),
+            GetPlayerName(loser),
+            Config.Economy.winnerPayout
+        )}
     })
 
     activeMatch = nil
@@ -137,4 +171,4 @@ AddEventHandler('playerDropped', function()
     clearMatchForPlayer(src)
 end)
 
-print('[fivem-fightclub] server script started')
+print(('[fivem-fightclub] server script started with framework: %s'):format(FrameworkBridge.GetName()))
